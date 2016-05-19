@@ -25,15 +25,15 @@ $ sockfwd --help
 
   Options:
   --socket-addr, -s path to unix socket file to listen on
-                     (default /var/run/fwd.sock)
-  --tcp-addr, -t remote tcp socket address to forward to
-                     (default 127.0.0.1:22)
-  --quiet, -q suppress logs
+                    (default /var/run/fwd.sock)
+  --tcp-addr, -t    remote tcp socket address to forward to
+                    (default 127.0.0.1:22)
+  --quiet, -q       suppress logs
   --help, -h
   --version, -v
 
   Version:
-    0.0.0-src
+    1.0.0
 
   Read more:
     github.com/jpillora/sockfwd
