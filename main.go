@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -87,8 +88,19 @@ func fwd(uconn net.Conn) {
 	id := atomic.AddUint64(&count, 1)
 	logf("[%d] connected", id)
 	t0 := time.Now()
-	go io.Copy(uconn, tconn)
-	io.Copy(tconn, uconn)
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+	go func() {
+		io.Copy(uconn, tconn)
+		uconn.Close()
+		wg.Done()
+	}()
+	go func() {
+		io.Copy(tconn, uconn)
+		tconn.Close()
+		wg.Done()
+	}()
+	wg.Wait()
 	logf("[%d] disconnected (%s)", id, time.Now().Sub(t0))
 }
 
