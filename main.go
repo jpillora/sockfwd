@@ -30,10 +30,13 @@ var config = struct {
 }
 
 var (
+	SIGINT  = os.Interrupt
+	SIGKILL = os.Kill
 	//allows compilation under windows,
 	//even though it cannot send USR signals
 	SIGUSR1 = syscall.Signal(0xa)
 	SIGUSR2 = syscall.Signal(0xc)
+	SIGTERM = syscall.Signal(0xf)
 )
 
 func main() {
@@ -72,7 +75,7 @@ func main() {
 		signal.Notify(c)
 		for sig := range c {
 			switch sig {
-			case os.Interrupt:
+			case SIGINT, SIGTERM, SIGKILL:
 				l.Close()
 				os.Remove(config.SocketAddr)
 				logf("closed listener and removed socket")
