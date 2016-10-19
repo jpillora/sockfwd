@@ -29,6 +29,13 @@ var config = struct {
 	Quiet:      false,
 }
 
+var (
+	//allows compilation under windows,
+	//even though it cannot send USR signals
+	SIGUSR1 = syscall.Signal(0xa)
+	SIGUSR2 = syscall.Signal(0xc)
+)
+
 func main() {
 	//init and parse cli
 	o := opts.New(&config)
@@ -70,7 +77,7 @@ func main() {
 				os.Remove(config.SocketAddr)
 				logf("closed listener and removed socket")
 				os.Exit(0)
-			case syscall.SIGUSR1:
+			case SIGUSR1:
 				mem := runtime.MemStats{}
 				runtime.ReadMemStats(&mem)
 				logf("stats:\n"+
@@ -80,7 +87,7 @@ func main() {
 					runtime.Version(), time.Now().Sub(uptime),
 					runtime.NumGoroutine(), mem.Alloc,
 					atomic.LoadInt64(&current), atomic.LoadUint64(&total))
-			case syscall.SIGUSR2:
+			case SIGUSR2:
 				//toggle logging with USR2 signal
 				config.Quiet = !config.Quiet
 				logf("connection logging: %v", config.Quiet)
