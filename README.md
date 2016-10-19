@@ -21,22 +21,26 @@ $ go get -v github.com/jpillora/sockfwd
 ```
 $ sockfwd --help
 
-  Usage: sockfwd [options]
+    Usage: sockfwd [options]
 
-  Options:
-  --socket-addr, -s path to unix socket file to listen on
-                    (default /var/run/fwd.sock)
-  --tcp-addr, -t    remote tcp socket address to forward to
-                    (default 127.0.0.1:22)
-  --quiet, -q       suppress logs
-  --help, -h
-  --version, -v
+    Options:
+    --socket-addr, -s  path to unix socket file to listen on
+                       (default /var/run/fwd.sock)
+    --tcp-addr, -t     remote tcp socket address to forward to
+                       (default 127.0.0.1:22)
+    --quiet, -q        suppress connection logs
+    --help, -h
+    --version, -v
 
-  Version:
-    1.0.0
+    the sockfwd process will accept a:
+      USR1 signal to print uptime and connection stats
+      USR2 signal to toggle connection logging (--quiet)
 
-  Read more:
-    github.com/jpillora/sockfwd
+    Version:
+      1.2.0
+
+    Read more:
+      github.com/jpillora/sockfwd
 ```
 
 #### MIT License

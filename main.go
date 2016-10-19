@@ -6,8 +6,10 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"runtime"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/jpillora/opts"
@@ -20,7 +22,7 @@ var VERSION = "0.0.0-src"
 var config = struct {
 	SocketAddr string `help:"path to unix socket file to listen on"`
 	TCPAddr    string `help:"remote tcp socket address to forward to"`
-	Quiet      bool   `help:"suppress logs"`
+	Quiet      bool   `help:"suppress connection logs"`
 }{
 	SocketAddr: "/var/run/fwd.sock",
 	TCPAddr:    "127.0.0.1:22",
@@ -31,6 +33,10 @@ func main() {
 	//init and parse cli
 	o := opts.New(&config)
 	o.LineWidth = 60
+	o.DocAfter("options", "signal",
+		"\nthe sockfwd process will accept a:\n"+
+			"  USR1 signal to print uptime and connection stats\n"+
+			"  USR2 signal to toggle connection logging (--quiet)\n")
 	o.Name("sockfwd").Version(VERSION).Repo("github.com/jpillora/sockfwd").Parse()
 	//check socket file
 	if info, err := os.Stat(config.SocketAddr); err == nil {
@@ -56,12 +62,30 @@ func main() {
 	//cleanup before shutdown
 	go func() {
 		c := make(chan os.Signal)
-		signal.Notify(c, os.Interrupt)
-		<-c
-		l.Close()
-		os.Remove(config.SocketAddr)
-		logf("closed listener and removed socket")
-		os.Exit(0)
+		signal.Notify(c)
+		for sig := range c {
+			switch sig {
+			case os.Interrupt:
+				l.Close()
+				os.Remove(config.SocketAddr)
+				logf("closed listener and removed socket")
+				os.Exit(0)
+			case syscall.SIGUSR1:
+				mem := runtime.MemStats{}
+				runtime.ReadMemStats(&mem)
+				logf("stats:\n"+
+					"  %s, uptime: %s\n"+
+					"  goroutines: %d, mem-alloc: %d\n"+
+					"  connections open: %d total: %d",
+					runtime.Version(), time.Now().Sub(uptime),
+					runtime.NumGoroutine(), mem.Alloc,
+					atomic.LoadInt64(&current), atomic.LoadUint64(&total))
+			case syscall.SIGUSR2:
+				//toggle logging with USR2 signal
+				config.Quiet = !config.Quiet
+				logf("connection logging: %v", config.Quiet)
+			}
+		}
 	}()
 	//accept connections
 	logf("listening on %s and forwarding to %s", config.SocketAddr, config.TCPAddr)
@@ -76,37 +100,48 @@ func main() {
 }
 
 //detailed statistics
-var count uint64
+var uptime = time.Now()
+var total uint64
+var current int64
 
-func fwd(uconn net.Conn) {
-	defer uconn.Close()
-	tconn, err := net.Dial("tcp", config.TCPAddr)
-	if err != nil {
-		log.Printf("local dial failed: %s", err)
-		return
-	}
-	id := atomic.AddUint64(&count, 1)
-	logf("[%d] connected", id)
-	t0 := time.Now()
-	wg := sync.WaitGroup{}
-	wg.Add(2)
-	go func() {
-		io.Copy(uconn, tconn)
-		uconn.Close()
-		wg.Done()
-	}()
-	go func() {
-		io.Copy(tconn, uconn)
-		tconn.Close()
-		wg.Done()
-	}()
-	wg.Wait()
-	logf("[%d] disconnected (%s)", id, time.Now().Sub(t0))
+//pool of buffers (default to io.Copy buffer size)
+var pool = sync.Pool{
+	New: func() interface{} {
+		return make([]byte, 32*1024)
+	},
 }
 
-//silenceable log.Printf
-func logf(format string, args ...interface{}) {
-	if !config.Quiet {
-		log.Printf(format, args...)
+func fwd(uconn net.Conn) {
+	tconn, err := net.Dial("tcp", config.TCPAddr)
+	if err != nil {
+		log.Printf("tcp dial failed: %s", err)
+		uconn.Close()
+		return
 	}
+	//stats
+	atomic.AddUint64(&total, 1)
+	atomic.AddInt64(&current, 1)
+	//optional log
+	if !config.Quiet {
+		logf("connection #%d (%d open)", atomic.LoadUint64(&total), atomic.LoadInt64(&current))
+	}
+	//pipe!
+	go func() {
+		ubuff := pool.Get().([]byte)
+		io.CopyBuffer(uconn, tconn, ubuff)
+		pool.Put(ubuff)
+		uconn.Close()
+		//stats
+		atomic.AddInt64(&current, -1)
+	}()
+	go func() {
+		tbuff := pool.Get().([]byte)
+		io.CopyBuffer(tconn, uconn, tbuff)
+		pool.Put(tbuff)
+		tconn.Close()
+	}()
+}
+
+func logf(format string, args ...interface{}) {
+	log.Printf(format, args...)
 }
